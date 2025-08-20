@@ -1,17 +1,15 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from "./components/theme-provider";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import LoginPage from "./components/LoginPage";
-import { SignupOptions } from "./components/SignupOptions";
+import SignupPage from "./components/SignupPage";
 import { Dashboard } from "./components/Dashboard";
 
-// Define children prop interface for ProtectedRoute
 interface ProtectedRouteProps {
   children: React.ReactElement;
 }
 
-// Protected Route component
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   
@@ -23,27 +21,36 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 };
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
+  const navigate = useNavigate();
 
   return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={
-          isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
-        } />
-        <Route path="/signup" element={
-          isAuthenticated ? <Navigate to="/dashboard" replace /> : <SignupOptions />
-        } />
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/" element={
-          <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />
-        } />
-      </Routes>
-    </Router>
+    <Routes>
+      <Route path="/login" element={
+        isAuthenticated ? 
+          <Navigate to="/dashboard" replace /> : 
+          <LoginPage 
+            onSignupClick={() => navigate('/signup')}
+            onLoginSuccess={() => { login(); navigate('/dashboard'); }}
+          />
+      } />
+      <Route path="/signup" element={
+        isAuthenticated ? 
+          <Navigate to="/dashboard" replace /> : 
+          <SignupPage 
+            onSignupSuccess={() => { login(); navigate('/dashboard'); }}
+            onLoginClick={() => navigate('/login')}
+          />
+      } />
+      <Route path="/dashboard" element={
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      } />
+      <Route path="/" element={
+        <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />
+      } />
+    </Routes>
   );
 }
 

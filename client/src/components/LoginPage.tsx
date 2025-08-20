@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, FileText, MessageSquare, Moon, Sparkles, Sun, Upload } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
+import { z } from 'zod';
 
 interface LoginPageProps {
   onSignupClick: () => void;
@@ -15,6 +16,23 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  const loginSchema = z.object({
+    email: z
+      .string()
+      .min(1, 'Email is required')
+      .email('Invalid email address'),
+    password: z
+      .string()
+      .min(6, 'Password must be at least 6 characters')
+  });
+
+  type LoginFormData = z.infer<typeof loginSchema>;
+
+  const [fieldErrors, setFieldErrors] = useState<{
+    email?: string;
+    password?: string;
+  }>({});
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -27,13 +45,24 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
     setTheme(newTheme);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) return;
-    
+  const validateAllFields = (data: LoginFormData) => {
+    const result = loginSchema.safeParse(data);
+    if (!result.success) {
+      const flattened = result.error.flatten().fieldErrors;
+      setFieldErrors({
+        email: flattened.email?.[0],
+        password: flattened.password?.[0]
+      });
+      return false;
+    }
+    setFieldErrors({});
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    const isValid = validateAllFields({ email, password });
+    if (!isValid) return;
     setIsLoading(true);
-    
-    // Simulate login process
     setTimeout(() => {
       setIsLoading(false);
       onLoginSuccess();
@@ -152,14 +181,18 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={() => validateAllFields({ email, password })}
                       required
-                      className={`w-full px-4 py-3 rounded-lg border transition-all duration-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                      className={`w-full px-4 py-3 rounded-lg border transition-all duration-300 focus:ring-2 focus:border-transparent ${
                         isDark
                           ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-400 focus:bg-slate-700/80'
                           : 'bg-white/70 border-gray-300 text-gray-900 placeholder-gray-500 focus:bg-white'
-                      } backdrop-blur-sm`}
+                      } ${fieldErrors.email ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-indigo-500'} backdrop-blur-sm`}
                       placeholder="Enter your email"
                     />
+                    {fieldErrors.email && (
+                      <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+                    )}
                   </div>
 
                   {/* Password Field */}
@@ -174,12 +207,13 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        onBlur={() => validateAllFields({ email, password })}
                         required
-                        className={`w-full px-4 py-3 pr-12 rounded-lg border transition-all duration-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                        className={`w-full px-4 py-3 pr-12 rounded-lg border transition-all duration-300 focus:ring-2 focus:border-transparent ${
                           isDark
                             ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-400 focus:bg-slate-700/80'
                             : 'bg-white/70 border-gray-300 text-gray-900 placeholder-gray-500 focus:bg-white'
-                        } backdrop-blur-sm`}
+                        } ${fieldErrors.password ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-indigo-500'} backdrop-blur-sm`}
                         placeholder="Enter your password"
                       />
                       <button
@@ -192,6 +226,9 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
                         {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                       </button>
                     </div>
+                    {fieldErrors.password && (
+                      <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
+                    )}
                   </div>
                 </div>
 

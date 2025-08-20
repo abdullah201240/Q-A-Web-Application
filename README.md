@@ -1,18 +1,19 @@
-# Document Chat Application
+# Q-A Web Application
 
-A full-stack document chat application that allows users to upload documents (PDF, DOC, DOCX) and have AI-powered conversations about their content. Built with React, TypeScript, Node.js, and MySQL.
+A full-stack document chat application that allows users to upload documents (PDF, DOC, DOCX) and have AI-powered conversations about their content using Groq Playground API. Built with React, TypeScript, Node.js, and MySQL.
 
 ## 🚀 Features
 
 - **User Authentication**: Secure login/signup with JWT tokens
 - **Document Upload**: Support for PDF, DOC, and DOCX files
 - **Text Extraction**: Automatic text extraction from uploaded documents
-- **AI Chat Interface**: ChatGPT-like interface for document-based conversations
+- **AI Chat Interface**: ChatGPT-like interface powered by Groq Playground API
 - **Conversation Management**: Create, manage, and delete chat conversations
 - **Real-time Chat**: Interactive chat interface with message history
 - **Responsive Design**: Modern UI with dark/light theme support
 - **File Validation**: Comprehensive file type and content validation
 - **Security**: CORS protection, input validation, and secure file handling
+- **Free AI Integration**: Uses Groq's free Playground API for AI responses
 
 ## 🏗️ Architecture
 
@@ -29,6 +30,7 @@ A full-stack document chat application that allows users to upload documents (PD
 - **Runtime**: Node.js with Express
 - **Database**: MySQL with Sequelize ORM
 - **Authentication**: JWT with refresh tokens
+- **AI Integration**: Groq Playground API for document-based conversations
 - **File Processing**: PDF parsing with pdf-parse, DOC/DOCX with mammoth
 - **Security**: Helmet, CORS, input validation
 - **Logging**: Winston logger
@@ -48,13 +50,14 @@ A full-stack document chat application that allows users to upload documents (PD
 - pnpm (v10.12.1 or higher)
 - MySQL (v8.0 or higher)
 - Git
+- Groq Playground API Key (Free - Get it from [Groq Console](https://console.groq.com/))
 
 ## 🛠️ Installation & Setup
 
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd interview
+cd Q-A-Web-Application
 ```
 
 ### 2. Backend Setup
@@ -80,9 +83,12 @@ ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 # Database Configuration (Development)
 DEV_DB_USERNAME=your_mysql_username
 DEV_DB_PASSWORD=your_mysql_password
-DEV_DB_NAME=document_chat_dev
+DEV_DB_NAME=aiQaApp
 DEV_DB_HOST=localhost
 DEV_DB_PORT=3306
+
+# Groq API Configuration
+GROQ_API_KEY=your_groq_api_key_here
 
 # JWT Configuration
 JWT_SECRET=your_jwt_secret_key_here
@@ -101,12 +107,12 @@ LOG_LEVEL=info
 #### Database Setup:
 1. Create a MySQL database:
 ```sql
-CREATE DATABASE document_chat_dev;
+CREATE DATABASE aiQaApp;
 ```
 
 2. Run database migrations:
 ```bash
-pnpm run migrate
+npx sequelize-cli db:migrate
 ```
 
 #### Start the backend server:
@@ -164,7 +170,7 @@ pnpm run dev
 ## 📁 Project Structure
 
 ```
-interview/
+Q-A-Web-Application/
 ├── auth-server/                 # Backend API server
 │   ├── src/
 │   │   ├── config/             # Configuration files
@@ -252,7 +258,7 @@ interview/
 cd auth-server
 pnpm run dev          # Start development server
 pnpm run build        # Build for production
-pnpm run migrate      # Run database migrations
+npx sequelize-cli db:migrate  # Run database migrations
 ```
 
 ### Frontend Development
@@ -266,7 +272,7 @@ pnpm run lint         # Run ESLint
 ### Database Management
 ```bash
 cd auth-server
-pnpm run migrate      # Run migrations
+npx sequelize-cli db:migrate  # Run migrations
 ```
 
 ## 🚀 Deployment
@@ -312,3 +318,4 @@ For support and questions:
 - **API Rate Limiting**: Enhanced abuse prevention
 - **WebSocket Support**: Real-time chat updates
 - **Document Versioning**: Track document changes over time
+- **Advanced AI Models**: Integration with more Groq models for enhanced responses

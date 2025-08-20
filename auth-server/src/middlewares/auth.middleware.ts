@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { ApiError } from './error.middleware';
 import logger from '../config/logger';
+import User from '../models/user.model';
 
 export interface AuthPayload {
   sub: number;
@@ -21,7 +22,7 @@ const getEnv = (key: string, fallback?: string): string => {
   return value;
 };
 
-export const requireAuth = (req: Request, _res: Response, next: NextFunction) => {
+export const requireAuth = async (req: Request, _res: Response, next: NextFunction) => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     logger.warn('Missing or malformed Authorization header', { path: req.path, method: req.method });
@@ -37,6 +38,12 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction) =>
     const sub = typeof decoded.sub === 'string' ? parseInt(decoded.sub, 10) : (decoded.sub as number);
     if (!Number.isFinite(sub)) {
       logger.warn('Non-numeric sub in token', { path: req.path, method: req.method });
+      return next(new ApiError(401, 'Unauthorized'));
+    }
+    // Enforce server-side logout by requiring an active refresh token on the user
+    const user = await User.scope('withSensitive').findByPk(sub);
+    if (!user || !user.refreshToken) {
+      logger.warn('Access denied: user has no active session', { path: req.path, method: req.method, userId: sub });
       return next(new ApiError(401, 'Unauthorized'));
     }
     req.auth = { sub };

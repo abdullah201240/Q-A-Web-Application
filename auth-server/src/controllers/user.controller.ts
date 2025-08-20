@@ -5,13 +5,6 @@ import User from '../models/user.model';
 import { ApiError } from '../middlewares/error.middleware';
 import logger from '../config/logger';
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || "LD9cv1kBfgRHVIg9GG_OGzh9TUkcyqgZAaM0o3DmVkx08MCFRSzMocyO3UtNdDNtoCJ0X0-5nLwK7fdO"; // Fallback to a hardcoded secret if not in env
-if (!ACCESS_TOKEN_SECRET) {
-  throw new Error('ACCESS_TOKEN_SECRET is not defined in environment variables');
-}
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
-const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-
 const getEnv = (key: string, fallback?: string): string => {
   const value = process.env[key] ?? fallback;
   if (!value) {
@@ -20,13 +13,17 @@ const getEnv = (key: string, fallback?: string): string => {
   return value;
 };
 
+const ACCESS_TOKEN_SECRET = getEnv('ACCESS_TOKEN_SECRET');
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
+const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
 const signAccessToken = (userId: number) => {
   const secret = ACCESS_TOKEN_SECRET;
   return jwt.sign({ sub: userId }, secret, { expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 };
 
 const signRefreshToken = (userId: number) => {
-  const secret =ACCESS_TOKEN_SECRET;
+  const secret = getEnv('JWT_REFRESH_SECRET');
   return jwt.sign({ sub: userId }, secret, { expiresIn: REFRESH_TOKEN_TTL_SECONDS });
 };
 

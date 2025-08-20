@@ -100,21 +100,115 @@ export function Dashboard() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeConversation.messages.length, isResponding]);
 
-  const createNewChat = () => {
-    const newConversation: Conversation = {
-      id: crypto.randomUUID(),
-      title: "New chat",
-      messages: [
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Hi! How can I help you today?"
+  // Load existing conversations from server on mount
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+    const load = async () => {
+      try {
+        const resp = await fetch(`${baseUrl}/api/conversations`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          credentials: 'include'
+        });
+        if (!resp.ok) {
+          if (resp.status === 401) {
+            logout();
+            toast({ title: 'Session expired', description: 'Please log in again.', variant: 'destructive' });
+            navigate('/login');
+          }
+          return; // keep local default
         }
-      ]
+        const data = await resp.json().catch(() => null) as { conversations?: Array<{ id: number; title: string }> } | null;
+        const list = data?.conversations ?? [];
+        if (list.length === 0) {
+          // Create one on server to match client UX
+          const created = await fetch(`${baseUrl}/api/conversations`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({})
+          }).then(r => r.json()).catch(() => null) as { id?: number; title?: string } | null;
+          if (created?.id) {
+            const seed: Conversation = { id: String(created.id), title: created.title || 'New chat', messages: [ { id: crypto.randomUUID(), role: 'assistant', content: 'Hi! How can I help you today?' } ] };
+            setConversations([seed]);
+            setActiveConversationId(String(created.id));
+          }
+          return;
+        }
+        // fetch each conversation details
+        const details = await Promise.all(list.map(async (c) => {
+          const r = await fetch(`${baseUrl}/api/conversations/${c.id}`, { headers: { 'Authorization': `Bearer ${token}` }, credentials: 'include' });
+          if (!r.ok) {
+            if (r.status === 401) {
+              logout();
+              toast({ title: 'Session expired', description: 'Please log in again.', variant: 'destructive' });
+              navigate('/login');
+            }
+            return { id: c.id, title: c.title, messages: [], documentIds: [] };
+          }
+          const d = await r.json().catch(() => null) as { id?: number; title?: string; messages?: Array<{ id: number; role: 'user'|'assistant'; content: string; attachments?: ChatAttachment[] }>; documentIds?: number[] } | null;
+          return d && d.id ? d : { id: c.id, title: c.title, messages: [], documentIds: [] };
+        }));
+        const mapped: Conversation[] = details.map(d => ({
+          id: String(d.id!),
+          title: d.title || 'New chat',
+          messages: (d.messages || []).map(m => ({ id: String(m.id), role: m.role, content: m.content, attachments: m.attachments }))
+        }));
+        const docMap: Record<string, number[]> = {};
+        for (const d of details) {
+          if (d?.id) docMap[String(d.id)] = d.documentIds || [];
+        }
+        setConversations(mapped.length ? mapped : conversations);
+        setConversationDocIds(prev => ({ ...prev, ...docMap }));
+        if (mapped.length) setActiveConversationId(mapped[0].id);
+      } catch {
+        // ignore load errors
+      }
     };
-    setConversations([newConversation, ...conversations]);
-    setActiveConversationId(newConversation.id);
-    setIsSidebarOpen(false);
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseUrl]);
+
+  const createNewChat = () => {
+    const run = async () => {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        // fallback local only
+        const local: Conversation = {
+          id: crypto.randomUUID(),
+          title: 'New chat',
+          messages: [{ id: crypto.randomUUID(), role: 'assistant', content: 'Hi! How can I help you today?' }]
+        };
+        setConversations([local, ...conversations]);
+        setActiveConversationId(local.id);
+        setIsSidebarOpen(false);
+        return;
+      }
+      try {
+        const resp = await fetch(`${baseUrl}/api/conversations`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({}) });
+        const data = await resp.json().catch(() => null) as { id?: number; title?: string } | null;
+        const idStr = data?.id ? String(data.id) : crypto.randomUUID();
+        const newConversation: Conversation = {
+          id: idStr,
+          title: data?.title || 'New chat',
+          messages: [ { id: crypto.randomUUID(), role: 'assistant', content: 'Hi! How can I help you today?' } ]
+        };
+        setConversations([newConversation, ...conversations]);
+        setActiveConversationId(newConversation.id);
+        setIsSidebarOpen(false);
+      } catch {
+        // fallback local on error
+        const local: Conversation = {
+          id: crypto.randomUUID(),
+          title: 'New chat',
+          messages: [{ id: crypto.randomUUID(), role: 'assistant', content: 'Hi! How can I help you today?' }]
+        };
+        setConversations([local, ...conversations]);
+        setActiveConversationId(local.id);
+        setIsSidebarOpen(false);
+      }
+    };
+    void run();
   };
 
   const selectConversation = (id: string) => {
@@ -127,6 +221,11 @@ export function Dashboard() {
     setConversations(filtered);
     if (id === activeConversationId && filtered.length > 0) {
       setActiveConversationId(filtered[0].id);
+    }
+    // Try to delete on server (best-effort)
+    const token = localStorage.getItem('accessToken');
+    if (token && /^\d+$/.test(id)) {
+      void fetch(`${baseUrl}/api/conversations/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }, credentials: 'include' }).catch(() => {});
     }
   };
 
@@ -168,6 +267,17 @@ export function Dashboard() {
       }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 20000);
+      // Persist user message
+      const token = localStorage.getItem('accessToken');
+      if (token && /^\d+$/.test(activeConversationId)) {
+        void fetch(`${baseUrl}/api/conversations/${activeConversationId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          credentials: 'include',
+          body: JSON.stringify({ role: 'user', content, attachments })
+        }).catch(() => {});
+      }
+
       const response = await fetch(`${baseUrl}/api/documents/${targetId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,6 +290,12 @@ export function Dashboard() {
       clearTimeout(timer);
       if (!response.ok) {
         const { status, message } = await parseErrorResponse(response);
+        if (status === 401) {
+          logout();
+          toast({ title: 'Session expired', description: 'Please log in again.', variant: 'destructive' });
+          navigate('/login');
+          return;
+        }
         if (status === 400) {
           toast({ title: 'Invalid question', description: 'Question is required.', variant: 'destructive' });
         } else if (status === 404) {
@@ -197,6 +313,15 @@ export function Dashboard() {
       const answer = data?.answer || 'No answer available.';
       const assistantMessage: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: answer };
       setConversations(prev => prev.map(c => c.id === activeConversationId ? { ...c, messages: [...c.messages, assistantMessage] } : c));
+      // Persist assistant message
+      if (token && /^\d+$/.test(activeConversationId)) {
+        void fetch(`${baseUrl}/api/conversations/${activeConversationId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          credentials: 'include',
+          body: JSON.stringify({ role: 'assistant', content: answer })
+        }).catch(() => {});
+      }
     } catch (err: unknown) {
       const isAbort = (err as Error)?.name === 'AbortError';
       toast({ title: 'Network error', description: isAbort ? 'Request timed out. Please try again.' : 'Failed to get answer from server.', variant: 'destructive' });
@@ -292,6 +417,12 @@ export function Dashboard() {
           if (token) headers['Authorization'] = `Bearer ${token}`;
           const resp = await fetch(`${baseUrl}/api/documents/upload`, { method: 'POST', body: form, signal: controller.signal, headers, credentials: 'include' });
           clearTimeout(timer);
+          if (resp.status === 401) {
+            logout();
+            toast({ title: 'Session expired', description: 'Please log in again.', variant: 'destructive' });
+            navigate('/login');
+            return;
+          }
           const payload = await resp.json().catch(() => null);
           if (!resp.ok || !payload?.id) {
             const { message } = !resp.ok ? await parseErrorResponse(resp) : { message: 'Upload failed' };
@@ -310,6 +441,22 @@ export function Dashboard() {
             return { ...prev, [activeConversationId]: list };
           });
           setUploadStateByKey(prev => ({ ...prev, [fk]: { status: 'ready' } }));
+          // Link document to conversation on server
+          if (token && /^\d+$/.test(activeConversationId)) {
+            const currentIds = (conversationDocIds[activeConversationId] ?? []).concat([payload.id]);
+            void fetch(`${baseUrl}/api/conversations/${activeConversationId}/documents`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              credentials: 'include',
+              body: JSON.stringify({ documentIds: currentIds })
+            }).then(async (r) => {
+              if (r.status === 401) {
+                logout();
+                toast({ title: 'Session expired', description: 'Please log in again.', variant: 'destructive' });
+                navigate('/login');
+              }
+            }).catch(() => {});
+          }
         } catch (err: unknown) {
           const fk = keyOf(file);
           const isAbort = (err as Error)?.name === 'AbortError';
@@ -322,10 +469,10 @@ export function Dashboard() {
     };
     void run();
     return () => { cancelled = true; };
-  }, [conversationUploads, activeConversationId, baseUrl, uploadedFileKeys, toast, parseErrorResponse]);
+  }, [conversationUploads, activeConversationId, baseUrl, uploadedFileKeys, toast, parseErrorResponse, conversationDocIds, logout, navigate]);
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-[#181818] text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`h-screen overflow-hidden ${isDark ? 'bg-[#181818] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Mobile overlay */}
       {isSidebarOpen && (
         <div
@@ -334,10 +481,10 @@ export function Dashboard() {
         />
       )}
 
-      <div className={`grid grid-cols-1 min-h-screen ${isSidebarOpen ? 'lg:grid-cols-[280px_1fr]' : 'lg:grid-cols-[0_1fr]'} transition-[grid-template-columns] duration-300`}>
+      <div className={`grid grid-cols-1 h-screen overflow-hidden ${isSidebarOpen ? 'lg:grid-cols-[280px_1fr]' : 'lg:grid-cols-[0_1fr]'} transition-[grid-template-columns] duration-300`}>
         {/* Sidebar */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 w-72 transform transition-transform duration-300 lg:static ${
+          className={`fixed inset-y-0 left-0 z-40 w-72 transform transition-transform duration-300 lg:static lg:h-screen ${
             isSidebarOpen ? 'translate-x-0 lg:translate-x-0' : '-translate-x-full lg:-translate-x-full'
           } ${isDark ? 'bg-[#181818] border-r border-neutral-800' : 'bg-white border-r border-gray-200'}`}
         >
@@ -427,7 +574,7 @@ export function Dashboard() {
         </aside>
 
         {/* Chat Area */}
-        <section className={`flex flex-col ${isDark ? 'bg-[#212121]' : ''}`}>
+        <section className={`flex flex-col min-h-0 ${isDark ? 'bg-[#212121]' : ''}`}>
           {/* Header */}
           <div className={`${isDark ? 'bg-[#212121] supports-[backdrop-filter]:bg-[#212121] border-[#212121]' : 'bg-white/80 supports-[backdrop-filter]:bg-white/60 border-gray-200'} sticky top-0 z-20 backdrop-blur border-b`}>
             <div className="flex items-center justify-between gap-2 px-3 py-3 md:px-6">

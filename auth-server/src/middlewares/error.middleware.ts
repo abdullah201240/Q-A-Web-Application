@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { ValidationError } from 'sequelize';
+import type multer from 'multer';
 import jwt from 'jsonwebtoken';
 import logger from '../config/logger';
 
@@ -45,6 +46,22 @@ export const errorHandler = (err: any, req: Request, res: Response, _next: NextF
   if (err && err.message === 'Not allowed by CORS') {
     logger.warn('CORS blocked', { origin: req.headers.origin });
     return res.status(403).json({ message: 'Origin not allowed' });
+  }
+
+  // Multer errors (file uploads)
+  if (err && (err as multer.MulterError)?.code) {
+    const mErr = err as multer.MulterError;
+    if (mErr.code === 'LIMIT_FILE_SIZE') {
+      logger.warn('Upload too large', { path: req.path, limit: process.env.MAX_UPLOAD_MB });
+      return res.status(413).json({ message: 'Uploaded file is too large' });
+    }
+    logger.warn('Upload failed', { code: mErr.code, message: mErr.message });
+    return res.status(400).json({ message: 'Upload failed', details: { code: mErr.code } });
+  }
+
+  if (err && err.message === 'Unsupported file type') {
+    logger.warn('Unsupported file type', { path: req.path });
+    return res.status(415).json({ message: 'Unsupported file type' });
   }
 
   // Fallback 500

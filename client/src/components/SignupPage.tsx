@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Eye, EyeOff, FileText, MessageSquare, Moon, Sparkles, Sun } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
 import { z } from 'zod';
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SignupPageProps {

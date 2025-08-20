@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc && cp src/config/config.js dist/config/config.js",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "migrate": "sequelize-cli db:migrate --config src/config/config.js --migrations-path src/migrations"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.12.1",
   "dependencies": {
+    "@types/pdf-parse": "^1.1.5",
     "bcryptjs": "^2.4.3",
     "body-parser": "^2.2.0",
     "compression": "^1.8.1",
@@ -23,9 +25,13 @@
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
     "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.10.0",
     "morgan": "^1.10.1",
+    "multer": "^1.4.5-lts.1",
     "mysql2": "^3.14.3",
+    "pdf-parse": "^1.1.1",
     "sequelize": "^6.37.7",
+    "undici": "^7.2.3",
     "winston": "^3.17.0"
   },
   "devDependencies": {
@@ -39,6 +45,7 @@
     "@types/hpp": "^0.2.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
+    "@types/multer": "^1.4.12",
     "@types/node": "^24.3.0",
     "eslint": "^9.33.0",
     "nodemon": "^3.1.10",

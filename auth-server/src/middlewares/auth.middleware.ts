@@ -29,7 +29,7 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction) =>
   }
   const token = header.substring('Bearer '.length);
   try {
-    const decoded = jwt.verify(token, getEnv('JWT_ACCESS_SECRET'));
+    const decoded = jwt.verify(token, getEnv('ACCESS_TOKEN_SECRET'));
     if (typeof decoded === 'string' || decoded.sub == null) {
       logger.warn('Invalid token payload', { path: req.path, method: req.method });
       return next(new ApiError(401, 'Unauthorized'));

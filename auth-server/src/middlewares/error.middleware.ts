@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { ValidationError } from 'sequelize';
 import jwt from 'jsonwebtoken';
+import logger from '../config/logger';
 
 export class ApiError extends Error {
   public statusCode: number;
@@ -14,17 +15,20 @@ export class ApiError extends Error {
 }
 
 export const notFoundHandler = (req: Request, res: Response, _next: NextFunction) => {
+  logger.warn('Route not found', { path: req.path, method: req.method });
   res.status(404).json({ message: 'Not Found' });
 };
 
-export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
+export const errorHandler = (err: any, req: Request, res: Response, _next: NextFunction) => {
   // Known typed error
   if (err instanceof ApiError) {
+    logger.warn('API error', { path: req.path, method: req.method, statusCode: err.statusCode, message: err.message, details: err.details });
     return res.status(err.statusCode).json({ message: err.message, details: err.details });
   }
 
   // Sequelize validation errors
   if (err instanceof ValidationError) {
+    logger.warn('Validation failed', { path: req.path, method: req.method, errors: err.errors.map(e => ({ message: e.message, path: e.path })) });
     return res.status(400).json({
       message: 'Validation failed',
       details: err.errors.map(e => ({ message: e.message, path: e.path })),
@@ -33,11 +37,13 @@ export const errorHandler = (err: any, _req: Request, res: Response, _next: Next
 
   // JWT-specific errors
   if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+    logger.warn('JWT error', { path: req.path, method: req.method, name: err.name, message: err.message });
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 
   // CORS error shape from our custom origin callback
   if (err && err.message === 'Not allowed by CORS') {
+    logger.warn('CORS blocked', { origin: req.headers.origin });
     return res.status(403).json({ message: 'Origin not allowed' });
   }
 
@@ -48,6 +54,7 @@ export const errorHandler = (err: any, _req: Request, res: Response, _next: Next
   if (!isProd) {
     payload.error = { message: err?.message, stack: err?.stack };
   }
+  logger.error('Unhandled error', { path: req.path, method: req.method, error: { message: err?.message, stack: err?.stack } });
   return res.status(500).json(payload);
 };
 

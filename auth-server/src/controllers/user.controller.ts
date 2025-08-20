@@ -3,7 +3,12 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/user.model';
 import { ApiError } from '../middlewares/error.middleware';
+import logger from '../config/logger';
 
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || "LD9cv1kBfgRHVIg9GG_OGzh9TUkcyqgZAaM0o3DmVkx08MCFRSzMocyO3UtNdDNtoCJ0X0-5nLwK7fdO"; // Fallback to a hardcoded secret if not in env
+if (!ACCESS_TOKEN_SECRET) {
+  throw new Error('ACCESS_TOKEN_SECRET is not defined in environment variables');
+}
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
@@ -16,12 +21,12 @@ const getEnv = (key: string, fallback?: string): string => {
 };
 
 const signAccessToken = (userId: number) => {
-  const secret = getEnv('JWT_ACCESS_SECRET');
+  const secret = ACCESS_TOKEN_SECRET;
   return jwt.sign({ sub: userId }, secret, { expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 };
 
 const signRefreshToken = (userId: number) => {
-  const secret = getEnv('JWT_REFRESH_SECRET');
+  const secret =ACCESS_TOKEN_SECRET;
   return jwt.sign({ sub: userId }, secret, { expiresIn: REFRESH_TOKEN_TTL_SECONDS });
 };
 
@@ -40,6 +45,7 @@ export const signup = async (req: Request, res: Response, next: NextFunction) =>
     const accessToken = signAccessToken(user.id);
     const refreshToken = signRefreshToken(user.id);
     await User.update({ refreshToken }, { where: { id: user.id } });
+    logger.info('User signed up', { userId: user.id, email: user.email });
     return res.status(201).json({ user: user.toJSON(), accessToken, refreshToken });
   } catch (error) {
     return next(error);
@@ -63,6 +69,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     const accessToken = signAccessToken(user.id);
     const refreshToken = signRefreshToken(user.id);
     await User.update({ refreshToken }, { where: { id: user.id } });
+    logger.info('User logged in', { userId: user.id, email: user.email });
     return res.status(200).json({ user: user.toJSON(), accessToken, refreshToken });
   } catch (error) {
     return next(error);
@@ -91,6 +98,7 @@ export const refresh = async (req: Request, res: Response, next: NextFunction) =
     const newAccess = signAccessToken(user.id);
     const newRefresh = signRefreshToken(user.id);
     await User.update({ refreshToken: newRefresh }, { where: { id: user.id } });
+    logger.info('Token refreshed', { userId: user.id });
     return res.status(200).json({ accessToken: newAccess, refreshToken: newRefresh });
   } catch (error) {
     return next(error);
@@ -107,6 +115,7 @@ export const logout = async (req: Request, res: Response, next: NextFunction) =>
     if (payload?.sub) {
       await User.update({ refreshToken: null }, { where: { id: payload.sub } });
     }
+    logger.info('User logged out', { userId: payload?.sub });
     return res.status(200).json({ message: 'Logged out' });
   } catch (error) {
     return next(error);

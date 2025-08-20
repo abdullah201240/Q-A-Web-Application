@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Eye, EyeOff, FileText, MessageSquare, Moon, Sparkles, Sun, Upload } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
 import { z } from 'zod';
+import { useToast } from '@/components/ui/toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LoginPageProps {
   onSignupClick: () => void;
@@ -10,6 +12,8 @@ interface LoginPageProps {
 
 const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
   const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
+  const { login: setAuthLoggedIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,6 +49,30 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
     setTheme(newTheme);
   };
 
+  const baseUrl = useMemo(() => {
+    const url = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+    return url.replace(/\/$/, '');
+  }, []);
+
+  const parseErrorResponse = useCallback(async (response: Response) => {
+    let body: { message?: string; errors?: Record<string, string[]>; details?: unknown } | null = null;
+    try {
+      body = await response.clone().json();
+    } catch {
+      try {
+        const text = await response.text();
+        body = text ? { message: text } : null;
+      } catch {
+        body = null;
+      }
+    }
+
+    const status = response.status;
+    const message = body?.message || (status >= 500 ? 'Server error' : 'Request failed');
+    const details = body?.details;
+    return { status, message, details } as { status: number; message: string; details?: unknown };
+  }, []);
+
   const validateAllFields = (data: LoginFormData) => {
     const result = loginSchema.safeParse(data);
     if (!result.success) {
@@ -63,39 +91,72 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
     const isValid = validateAllFields({ email, password });
     if (!isValid) return;
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const { status, message } = await parseErrorResponse(response);
+        if (status === 400) {
+          setFieldErrors(prev => ({ ...prev, email: 'Email is required', password: 'Password is required' }));
+        }
+        if (status === 401) {
+          setFieldErrors(prev => ({ ...prev, password: 'Invalid email or password' }));
+        }
+        if (status === 403) {
+          toast({ title: 'Login failed', description: 'Origin not allowed by server. Check ALLOWED_ORIGINS.', variant: 'destructive' });
+        } else if (status === 404) {
+          toast({ title: 'Login failed', description: 'Login endpoint not found.', variant: 'destructive' });
+        } else {
+          toast({ title: 'Login failed', description: message || 'Unable to login', variant: 'destructive' });
+        }
+        return;
+      }
+
+      if (data?.accessToken && data?.refreshToken) {
+        try {
+          localStorage.setItem('accessToken', data.accessToken);
+          localStorage.setItem('refreshToken', data.refreshToken);
+          localStorage.setItem('user', JSON.stringify(data.user ?? { email }));
+        } catch {
+          // ignore storage errors
+        }
+      }
+
+      const rawName: string | undefined = data?.user?.name || data?.user?.email || email;
+      const derivedName = (rawName || 'User').toString();
+      setAuthLoggedIn({ name: derivedName });
+      toast({ title: 'Welcome back', description: derivedName, variant: 'success' });
       onLoginSuccess();
-    }, 1000);
+    } catch (err: unknown) {
+      const isAbort = (err as Error)?.name === 'AbortError';
+      const msg = isAbort ? 'Request timed out. Please try again.' : 'Network error. Please try again.';
+      toast({ title: 'Network error', description: msg, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!mounted) return null;
 
   return (
-    <div className={`min-h-screen transition-all duration-500 ${
+    <div className={`min-h-screen ${
       isDark 
         ? 'bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900' 
         : 'bg-gradient-to-br from-blue-50 via-indigo-100 to-purple-50'
     }`}>
-      {/* Animated background particles */}
-      <div className="absolute inset-0 overflow-hidden">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className={`absolute animate-pulse ${
-              isDark ? 'bg-purple-400/10' : 'bg-indigo-400/20'
-            } rounded-full`}
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              width: `${Math.random() * 100 + 50}px`,
-              height: `${Math.random() * 100 + 50}px`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${Math.random() * 3 + 2}s`
-            }}
-          />
-        ))}
-      </div>
+      
 
       {/* Theme Toggle */}
       <div className="absolute top-6 right-6 z-10 group">
@@ -122,9 +183,7 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
       </div>
 
       <div className="flex items-center justify-center min-h-screen p-4 relative z-10">
-        <div className={`w-full max-w-md  ${
-          mounted ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-        }`}>
+        <div className={`w-full max-w-md`}>
           {/* Main Card */}
           <div className={`${
             isDark 
@@ -156,19 +215,19 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
                 
                 <h1 className={`text-2xl font-bold mb-2 ${
                   isDark ? 'text-white' : 'text-gray-900'
-                } animate-fade-in`}>
+                }`}>
                   Q&A Web Application
                 </h1>
                 
                 <p className={`${
                   isDark ? 'text-slate-400' : 'text-gray-600'
-                } animate-fade-in-delay`}>
+                }`}>
                   AI-Powered Document Intelligence
                 </p>
               </div>
 
               {/* Login Form */}
-              <div className="space-y-6">
+              <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); void handleSubmit(); }}>
                 <div className="space-y-4">
                   {/* Email Field */}
                   <div className="group">
@@ -259,7 +318,7 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
 
                 {/* Login Button */}
                 <button
-                  onClick={handleSubmit}
+                  type="submit"
                   disabled={isLoading}
                   className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isDark
@@ -276,7 +335,7 @@ const LoginPage = ({ onSignupClick, onLoginSuccess }: LoginPageProps) => {
                     'Sign In'
                   )}
                 </button>
-              </div>
+              </form>
 
               {/* Features Preview */}
               <div className={`mt-8 p-4 rounded-lg ${

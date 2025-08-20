@@ -1,5 +1,6 @@
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/components/ui/toast";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, LogOut, Menu, MessageSquare, Plus, Send, Trash2, User, Sparkles, X, Paperclip } from "lucide-react";
@@ -26,8 +27,13 @@ type Conversation = {
 export function Dashboard() {
   const { theme } = useTheme();
   const { logout, user } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const baseUrl = useMemo(() => {
+    const url = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+    return url.replace(/\/$/, '');
+  }, []);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([
@@ -217,7 +223,23 @@ export function Dashboard() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { logout(); navigate('/login'); }}
+                  onClick={async () => {
+                    const refreshToken = localStorage.getItem('refreshToken');
+                    try {
+                      await fetch(`${baseUrl}/api/auth/logout`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ refreshToken })
+                      }).catch(() => {});
+                    } catch {
+                      // ignore network errors on logout
+                    } finally {
+                      logout();
+                      toast({ title: 'Logged out', description: 'You have been signed out.', variant: 'info' });
+                      navigate('/login');
+                    }
+                  }}
                   className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
                     isDark ? 'text-red-300 hover:bg-neutral-900' : 'text-red-600 hover:bg-gray-100'
                   }`}

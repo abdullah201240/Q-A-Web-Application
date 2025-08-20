@@ -21,7 +21,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 };
 
 function AppContent() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -31,14 +31,14 @@ function AppContent() {
           <Navigate to="/dashboard" replace /> : 
           <LoginPage 
             onSignupClick={() => navigate('/signup')}
-            onLoginSuccess={() => { login(); navigate('/dashboard'); }}
+            onLoginSuccess={() => { navigate('/dashboard'); }}
           />
       } />
       <Route path="/signup" element={
         isAuthenticated ? 
           <Navigate to="/dashboard" replace /> : 
           <SignupPage 
-            onSignupSuccess={() => { login(); navigate('/dashboard'); }}
+            onSignupSuccess={() => { navigate('/dashboard'); }}
             onLoginClick={() => navigate('/login')}
           />
       } />
